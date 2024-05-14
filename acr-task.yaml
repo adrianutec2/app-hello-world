@@ -1,0 +1,31 @@
+version: v1.0
+secrets:
+  - id: registry-user
+    keyvault: https://{{.Values.KEYVAULT}}.vault.azure.net/secrets/registry-{{.Run.RegistryName}}-user
+  - id: registry-password
+    keyvault: https://{{.Values.KEYVAULT}}.vault.azure.net/secrets/registry-{{.Run.RegistryName}}-password
+steps:
+  - id: build-hello-world
+    build: >
+      --build-arg REGISTRY_FROM_URL={{.Values.REGISTRY_FROM_URL}} 
+      -t {{.Run.Registry}}/hello-world:{{.Run.ID}} 
+      -f Dockerfile 
+      .
+  - id: push-images
+    when: ['build-hello-world']
+    push: 
+    - "{{.Run.Registry}}/hello-world:{{.Run.ID}}"
+  - id: az-login
+    when: ['-']
+    cmd: az login --identity > /dev/null
+  - id: deploy-aci
+    when: ['az-login', 'push-images']
+    cmd: >
+      az container create 
+      --resource-group "{{.Values.ContainerInstance_RG}}" 
+      --name "{{.Values.ContainerInstance}}" 
+      --image "{{.Run.Registry}}/hello-world:{{.Run.ID}}" 
+      --registry-username "{{index .Secrets "registry-user"}}" 
+      --registry-password "{{index .Secrets "registry-password"}}" 
+      --ip-address public 
+      --ports 80
